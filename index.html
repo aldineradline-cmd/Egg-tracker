@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#244a32">
+<title>Egg Tracker</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{--bg:#f3f5f1;--card:#fff;--ink:#1c2a21;--mute:#617066;--line:#d5dcd4;--brand:#244a32;--yolk:#f2b72c;--ok:#1b7f4b;--okbg:#dff3e6;--bad:#b3261e;--badbg:#fbe3e0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root{--bg:#121a15;--card:#1b261f;--ink:#e8efe9;--mute:#9db0a2;--line:#2e3f34;--brand:#0e1f15;--ok:#6fdc9c;--okbg:#16382a;--bad:#ff8a80;--badbg:#44201d}}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--brand);color:#fff;padding:10px 14px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:flex;align-items:center;gap:10px}
+header b{flex:1;font-size:18px}#st{font-size:12px;background:#ffffff26;border-radius:20px;padding:3px 10px}
+main{max-width:960px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+h2{margin:0 0 8px;font-size:17px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid var(--yolk);outline-offset:1px}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--brand);color:#fff;border:0;border-radius:10px;padding:12px 16px;font-weight:600}
+.btn.y{background:var(--yolk);color:#1c2a21}.btn.alt{background:var(--card);color:var(--ink);border:1px solid var(--line)}.btn.sm{padding:6px 10px;font-size:13px}
+.row{display:flex;gap:8px;align-items:flex-end}.row>*{flex:1}.row>.fix{flex:none}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}.stat b{display:block;font-size:26px;font-variant-numeric:tabular-nums}.stat span{font-size:12px;color:var(--mute)}
+.stat.bad{background:var(--badbg);color:var(--bad)}.stat.ok b{color:var(--ok)}
+.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{flex:1;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:600}.tabs .on{background:var(--brand);color:#fff}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:8px 6px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--mute);font-weight:600;font-size:12px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.pill{border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;border:0}.pill.y{background:var(--okbg);color:var(--ok)}.pill.n{background:var(--badbg);color:var(--bad)}
+.hint{background:var(--okbg);color:var(--ok);border-radius:8px;padding:8px 10px;margin-top:8px;font-weight:600;min-height:20px}
+.late{color:var(--bad);font-weight:700}.mute{color:var(--mute);font-size:13px}
+</style>
+</head>
+<body>
+<header><b>🥚 Egg Tracker</b><span id="st"></span></header>
+<main>
+<div class="stats" id="stats"></div>
+<div class="tabs" id="tabs"></div>
+<div id="view"></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mem={};
+const ld=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return mem[k]??d}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){mem[k]=v}};
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const rnd=()=>Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>'abcdefghjkmnpqrstuvwxyz23456789'[b%31]).join('');
+let cfg=Object.assign({name:'',team:'',fb:null,trays:[30,12,6]},ld('egg_cfg',{}));
+try{if(location.hash.startsWith('#setup=')){const d=JSON.parse(atob(location.hash.slice(7)));cfg.fb=d.fb;cfg.team=d.team;if(d.trays)cfg.trays=d.trays;sv('egg_cfg',cfg);history.replaceState(null,'',location.pathname+location.search)}}catch(e){}
+if(!cfg.team){cfg.team=rnd();sv('egg_cfg',cfg)}
+let eggs=ld('egg_eggs',[]),orders=ld('egg_orders',[]),fb=null,user=null,authReady=false,auth=null,tab='eggs',editE=null,editO=null,status='Local only';
+if(cfg.fb){eggs=[];orders=[]}
+const needLogin=()=>cfg.fb&&authReady&&!user&&tab!=='set';
+const todayStr=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};
+const nowLocal=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)};
+const toLocal=iso=>{const d=new Date(iso);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)};
+const fmt=iso=>new Date(iso).toLocaleString([],{weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+const fmtD=s=>new Date(s+'T12:00').toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});
+const sizes=()=>(cfg.trays&&cfg.trays.length?cfg.trays:[30]).map(Number).filter(x=>x>0);
+
+function pack(n,sz){
+ const s=[...sz].sort((a,b)=>b-a),mx=s[0];if(!(n>=1)||!mx||n>200000)return null;
+ const lim=n+mx,dp=new Array(lim+1).fill(Infinity),from=[];dp[0]=0;
+ for(let c=1;c<=lim;c++)for(const z of s)if(c>=z&&dp[c-z]+1<dp[c]){dp[c]=dp[c-z]+1;from[c]=z}
+ for(let c=n;c<=lim;c++)if(dp[c]<Infinity){const cnt={};let x=c;while(x>0){cnt[from[x]]=(cnt[from[x]]||0)+1;x-=from[x]}return{cnt,spare:c-n}}
+}
+const trayTxt=p=>p?Object.keys(p.cnt).sort((a,b)=>b-a).map(k=>p.cnt[k]+'×'+k).join(' + '):'';
+
+function put(kind,o){
+ if(fb)fb.collection(kind).doc(o.id).set(o).catch(e=>alert('Save failed: '+e.code));
+ else{const a=kind==='eggs'?eggs:orders,i=a.findIndex(x=>x.id===o.id);i<0?a.push(o):a[i]=o;sv('egg_'+kind,a);refresh()}
+}
+function del(kind,id){
+ if(!confirm('Delete this entry? This cannot be undone.'))return;
+ if(fb)fb.collection(kind).doc(id).delete();
+ else{if(kind==='eggs')eggs=eggs.filter(x=>x.id!==id);else orders=orders.filter(x=>x.id!==id);sv('egg_'+kind,kind==='eggs'?eggs:orders);refresh()}
+}
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.crossOrigin='anonymous';s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
+async function connect(){
+ if(!cfg.fb||!cfg.team)return;
+ try{
+  const B='https://www.gstatic.com/firebasejs/9.23.0/';
+  await loadScript(B+'firebase-app-compat.js');await loadScript(B+'firebase-auth-compat.js');await loadScript(B+'firebase-firestore-compat.js');
+  firebase.initializeApp(cfg.fb);auth=firebase.auth();
+  auth.onAuthStateChanged(u=>{user=u;authReady=true;if(u&&!fb)startSync();draw()});
+  status='Signing in…';
+ }catch(e){status='Sync unavailable (offline?)'}
+ refresh();
+}
+async function startSync(){
+ const db=firebase.firestore();
+ try{await db.enablePersistence({synchronizeTabs:true})}catch(e){}
+ fb=db.collection('teams').doc(cfg.team);
+ ['eggs','orders'].forEach(k=>fb.collection(k).onSnapshot(s=>{const a=s.docs.map(d=>d.data());if(k==='eggs')eggs=a;else orders=a;status=s.metadata.fromCache?'Offline · will sync':'Synced';refresh()},e=>{status=e.code==='permission-denied'?'Not approved yet · send your ID to your partner':'Sync error: '+e.code;refresh()}));
+}
+const loginView=()=>`<div class="card"><h2>Sign in</h2><p class="mute">Private to the two partners. Use the same email every time.</p><label>Email</label><input id="l_em" type="email" autocomplete="username"><label>Password (6+ characters)</label><input id="l_pw" type="password" autocomplete="current-password"><p></p><div class="row"><button class="btn y" data-a="login">Sign in</button><button class="btn alt" data-a="signup">Create account</button></div><p id="l_err" class="late"></p><p class="mute">First time? Press Create account. Then send your ID (Settings) to your partner so they can approve you.</p><button class="btn alt sm" data-a="tab" data-t="set">Settings</button></div>`;
+
+function refresh(){
+ $('st').textContent=status;
+ if(needLogin())return;
+ const col=eggs.reduce((a,x)=>a+x.n,0),dlv=orders.filter(o=>o.done).reduce((a,o)=>a+o.eggs,0),pend=orders.filter(o=>!o.done).reduce((a,o)=>a+o.eggs,0),stock=col-dlv,unpaid=orders.filter(o=>!o.paid).length;
+ $('stats').innerHTML=`<div class="stat ${stock<0?'bad':'ok'}"><b>${stock}</b><span>Eggs in stock</span></div><div class="stat ${pend>stock?'bad':''}"><b>${pend}</b><span>${pend>stock?'To deliver · short '+(pend-stock):'Eggs to deliver'}</span></div><div class="stat ${unpaid?'bad':'ok'}"><b>${unpaid}</b><span>Unpaid orders</span></div>`;
+ const l=$('list');if(!l)return;
+ if(tab==='eggs')l.innerHTML=listEggs();else if(tab==='orders')l.innerHTML=listOrders();
+ const dl=$('custs');if(dl)dl.innerHTML=[...new Set(orders.map(o=>o.who))].map(x=>`<option value="${esc(x)}">`).join('');
+}
+function listEggs(){
+ const L=[...eggs].sort((a,b)=>b.ts.localeCompare(a.ts));
+ if(!L.length)return '<p class="mute">No collections yet. Add today’s eggs above.</p>';
+ return `<table><tr><th>Collected</th><th class="n">Eggs</th><th>Trays needed</th><th class="n">Spare slots</th><th>By</th><th>Note</th><th></th></tr>${L.map(x=>{const p=pack(x.n,sizes());return `<tr><td>${fmt(x.ts)}</td><td class="n"><b>${x.n}</b></td><td>${trayTxt(p)}</td><td class="n">${p?p.spare:''}</td><td>${esc(x.by)}</td><td>${esc(x.note)}</td><td><button class="btn alt sm" data-a="ee" data-id="${x.id}">Edit</button> <button class="btn alt sm" data-a="de" data-id="${x.id}">✕</button></td></tr>`}).join('')}</table>`;
+}
+function listOrders(){
+ const L=[...orders].sort((a,b)=>(a.done-b.done)||a.due.localeCompare(b.due));
+ if(!L.length)return '<p class="mute">No orders yet. Add one above.</p>';
+ return `<table><tr><th>Customer</th><th class="n">Amount</th><th class="n">Eggs</th><th>Wanted</th><th>Paid</th><th>Delivered</th><th>By</th><th>Note</th><th></th></tr>${L.map(o=>{const late=!o.done&&o.due<todayStr();return `<tr><td><b>${esc(o.who)}</b></td><td class="n">${o.qty} ${o.unit>1?o.unit+'-tray':'eggs'}</td><td class="n">${o.eggs}</td><td class="${late?'late':''}">${fmtD(o.due)}${late?' · late':''}</td><td><button class="pill ${o.paid?'y':'n'}" data-a="tp" data-id="${o.id}">${o.paid?'Paid':'Unpaid'}</button></td><td><button class="pill ${o.done?'y':'n'}" data-a="td" data-id="${o.id}">${o.done?'Delivered':'Pending'}</button></td><td>${esc(o.by)}</td><td>${esc(o.note)}</td><td><button class="btn alt sm" data-a="eo" data-id="${o.id}">Edit</button> <button class="btn alt sm" data-a="do" data-id="${o.id}">✕</button></td></tr>`}).join('')}</table>`;
+}
+function draw(){
+ if(needLogin()){$('stats').innerHTML='';$('tabs').innerHTML='';$('view').innerHTML=loginView();$('st').textContent=status;return}
+ $('tabs').innerHTML=[['eggs','Eggs collected'],['orders','Orders'],['set','Settings']].map(t=>`<button data-a="tab" data-t="${t[0]}" class="${tab===t[0]?'on':''}">${t[1]}</button>`).join('');
+ const v=$('view');
+ if(tab==='eggs'){const e=editE;v.innerHTML=`<div class="card"><h2>${e?'Edit collection':'Add eggs collected'}</h2>
+  <label>Number of eggs</label><input id="f_n" type="number" inputmode="numeric" min="1" step="1" value="${e?e.n:''}">
+  <div class="hint" id="hint">Enter a number to see the tray size.</div>
+  <label>Collected on</label><div class="row"><input id="f_ts" type="datetime-local" value="${e?toLocal(e.ts):nowLocal()}"><button class="btn alt fix" data-a="now">Now</button></div>
+  <label>Note (optional)</label><input id="f_note" value="${e?esc(e.note):''}" placeholder="e.g. morning pick, 3 cracked">
+  <p></p><div class="row"><button class="btn y" data-a="saveE">${e?'Save changes':'Save collection'}</button>${e?'<button class="btn alt" data-a="cancel">Cancel</button>':''}</div></div>
+  <div class="card wrap" id="list"></div>`;hint()}
+ else if(tab==='orders'){const o=editO,us=sizes();v.innerHTML=`<div class="card"><h2>${o?'Edit order':'Add order'}</h2>
+  <label>Who ordered</label><input id="o_who" list="custs" autocomplete="off" value="${o?esc(o.who):''}"><datalist id="custs"></datalist>
+  <div class="row"><div><label>Amount</label><input id="o_qty" type="number" inputmode="numeric" min="1" step="1" value="${o?o.qty:''}"></div><div><label>Unit</label><select id="o_unit"><option value="1">Eggs</option>${us.map(s=>`<option value="${s}" ${o&&o.unit==s?'selected':''}>Trays of ${s}</option>`).join('')}</select></div></div>
+  <div class="hint" id="ohint"></div>
+  <label>Day wanted</label><input id="o_due" type="date" value="${o?o.due:''}">
+  <label class="row" style="align-items:center;justify-content:flex-start;gap:10px;color:var(--ink);font-size:15px"><input type="checkbox" id="o_paid" style="width:22px;flex:none" ${o&&o.paid?'checked':''}> Already paid</label>
+  <label>Note (optional)</label><input id="o_note" value="${o?esc(o.note):''}">
+  <p></p><div class="row"><button class="btn y" data-a="saveO">${o?'Save changes':'Save order'}</button>${o?'<button class="btn alt" data-a="cancel">Cancel</button>':''}</div></div>
+  <div class="card wrap" id="list"></div>`;ohint()}
+ else v.innerHTML=`<div class="card"><h2>Settings</h2>
+  <label>Your name (shown on entries you add)</label><input id="s_name" value="${esc(cfg.name)}">
+  <label>Tray sizes you use (comma separated)</label><input id="s_tr" value="${sizes().join(', ')}">
+  <label>Team code (same on both phones)</label><input id="s_team" value="${esc(cfg.team)}">
+  <label>Firebase config (paste once; leave empty to work on this device only)</label><textarea id="s_fb" rows="5" placeholder='{"apiKey":"…","projectId":"…"}'>${cfg.fb?esc(JSON.stringify(cfg.fb)):''}</textarea>
+  <p></p><div class="row"><button class="btn y" data-a="saveS">Save settings</button><button class="btn alt" data-a="link">Copy partner setup link</button></div></div>
+  ${auth?`<div class="card"><h2>Account</h2>${user?`<p>Signed in as <b>${esc(user.email)}</b></p><p class="mute">Your ID (send this to your partner so they can approve you):</p><p style="word-break:break-all"><b>${user.uid}</b></p><div class="row"><button class="btn alt" data-a="uid">Copy my ID</button><button class="btn alt" data-a="out">Sign out</button></div>`:'<p class="mute">Not signed in.</p>'}</div>`:''}
+  <div class="card"><h2>Backup &amp; export</h2><div class="row"><button class="btn alt" data-a="csvE">Eggs CSV</button><button class="btn alt" data-a="csvO">Orders CSV</button></div><p></p><div class="row"><button class="btn alt" data-a="bk">Download backup</button><button class="btn alt" data-a="rs">Restore backup</button></div><input type="file" id="rsf" accept=".json" hidden></div>`;
+ refresh();
+}
+function hint(){const n=+$('f_n').value,p=pack(n,sizes());$('hint').textContent=p?`Use ${trayTxt(p)} · ${p.spare} spare slot${p.spare===1?'':'s'}`:'Enter a number to see the tray size.'}
+function ohint(){const q=+$('o_qty').value,u=+$('o_unit').value;$('ohint').textContent=q>0?`= ${q*u} eggs`:'Enter an amount.'}
+const val=id=>$(id).value.trim();
+document.addEventListener('input',e=>{if(e.target.id==='f_n')hint();if(e.target.id==='o_qty')ohint()});
+document.addEventListener('change',e=>{if(e.target.id==='o_unit')ohint();if(e.target.id==='rsf'&&e.target.files[0]){const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.eggs)||!Array.isArray(d.orders))throw 0;if(!confirm('Add '+d.eggs.length+' collections and '+d.orders.length+' orders from this backup?'))return;d.eggs.forEach(x=>put('eggs',x));d.orders.forEach(x=>put('orders',x));alert('Restored.')}catch(x){alert('That is not a valid backup file.')}};r.readAsText(e.target.files[0])}});
+function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click()}
+const csv=rows=>rows.map(r=>r.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\n');
+document.addEventListener('click',e=>{
+ const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id;
+ if(a==='tab'){tab=b.dataset.t;editE=editO=null;draw()}
+ else if(a==='now')$('f_ts').value=nowLocal();
+ else if(a==='cancel'){editE=editO=null;draw()}
+ else if(a==='ee'){editE=eggs.find(x=>x.id===id);draw();scrollTo(0,0)}
+ else if(a==='eo'){editO=orders.find(x=>x.id===id);draw();scrollTo(0,0)}
+ else if(a==='de')del('eggs',id);else if(a==='do')del('orders',id);
+ else if(a==='tp'){const o=orders.find(x=>x.id===id);put('orders',{...o,paid:!o.paid})}
+ else if(a==='td'){const o=orders.find(x=>x.id===id);put('orders',{...o,done:!o.done})}
+ else if(a==='login'||a==='signup'){const em=val('l_em'),pw=$('l_pw').value;if(!em||!pw)return $('l_err').textContent='Enter your email and password.';$('l_err').textContent='Working…';
+  (a==='login'?auth.signInWithEmailAndPassword(em,pw):auth.createUserWithEmailAndPassword(em,pw)).catch(x=>{$('l_err').textContent=['auth/wrong-password','auth/invalid-credential','auth/user-not-found'].includes(x.code)?'Wrong email or password. If this is your first time, press Create account.':x.code==='auth/email-already-in-use'?'That email already has an account. Press Sign in.':x.code==='auth/weak-password'?'Password needs 6 or more characters.':x.code==='auth/operation-not-allowed'?'Email sign-in is not turned on in Firebase yet.':x.message})}
+ else if(a==='out'){auth.signOut().then(()=>location.reload())}
+ else if(a==='uid'){const t=user.uid;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>alert('ID copied.'),()=>prompt('Copy your ID:',t))}
+ else if(a==='saveE'){
+  const n=+val('f_n'),ts=val('f_ts');
+  if(!Number.isInteger(n)||n<1)return alert('Enter a whole number of eggs, 1 or more.');
+  if(!ts)return alert('Pick the date and time collected.');
+  const iso=new Date(ts).toISOString();
+  if(new Date(iso)>new Date(Date.now()+3600e3)&&!confirm('That time is in the future. Save anyway?'))return;
+  if(n>2000&&!confirm(n+' eggs is a lot. Is that right?'))return;
+  if(!editE&&eggs.some(x=>x.n===n&&Math.abs(new Date(x.ts)-new Date(iso))<30*60e3)&&!confirm('You already saved '+n+' eggs around this time. Save again?'))return;
+  put('eggs',{id:editE?editE.id:uid(),n,ts:iso,note:val('f_note'),by:editE?editE.by:cfg.name});editE=null;draw()}
+ else if(a==='saveO'){
+  const who=val('o_who'),qty=+val('o_qty'),unit=+$('o_unit').value,due=val('o_due');
+  if(!who)return alert('Enter who ordered.');
+  if(!Number.isInteger(qty)||qty<1)return alert('Enter a whole number for the amount.');
+  if(!due)return alert('Pick the day they want it.');
+  if(!editO&&due<todayStr()&&!confirm('That day is in the past. Save anyway?'))return;
+  const prev=editO;put('orders',{id:prev?prev.id:uid(),who,qty,unit,eggs:qty*unit,due,paid:$('o_paid').checked,done:prev?prev.done:false,note:val('o_note'),by:prev?prev.by:cfg.name});editO=null;draw()}
+ else if(a==='saveS'){
+  const tr=val('s_tr').split(/[ ,]+/).map(Number).filter(x=>Number.isInteger(x)&&x>0);
+  if(!tr.length)return alert('Enter at least one tray size, like 30, 12, 6.');
+  let fbc=null;const raw=val('s_fb');
+  if(raw){try{fbc=JSON.parse(raw);if(!fbc.apiKey||!fbc.projectId)throw 0}catch(x){return alert('The Firebase config is not valid. Paste the whole block from Firebase, in JSON form.')}}
+  const old=JSON.stringify([cfg.fb,cfg.team]);cfg.name=val('s_name');cfg.trays=tr;cfg.team=val('s_team')||rnd();cfg.fb=fbc;sv('egg_cfg',cfg);
+  if(JSON.stringify([cfg.fb,cfg.team])!==old){alert('Saved. The app will reload to connect.');location.reload()}else{alert('Saved.');draw()}}
+ else if(a==='link'){if(!cfg.fb)return alert('Add the Firebase config first.');const u=location.origin+location.pathname+'#setup='+btoa(JSON.stringify({fb:cfg.fb,team:cfg.team,trays:cfg.trays}));(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>alert('Link copied. Send it to your partner and have them open it once.'),()=>prompt('Copy this link:',u))}
+ else if(a==='csvE')dl('eggs.csv',csv([['Collected','Eggs','Trays','Spare slots','By','Note'],...[...eggs].sort((x,y)=>x.ts.localeCompare(y.ts)).map(x=>{const p=pack(x.n,sizes());return[fmt(x.ts),x.n,trayTxt(p),p?p.spare:'',x.by,x.note]})]),'text/csv');
+ else if(a==='csvO')dl('orders.csv',csv([['Customer','Amount','Unit','Eggs','Day wanted','Paid','Delivered','By','Note'],...orders.map(o=>[o.who,o.qty,o.unit>1?o.unit+'-tray':'eggs',o.eggs,o.due,o.paid?'Yes':'No',o.done?'Yes':'No',o.by,o.note])]),'text/csv');
+ else if(a==='bk')dl('egg-backup-'+todayStr()+'.json',JSON.stringify({eggs,orders}),'application/json');
+ else if(a==='rs')$('rsf').click();
+});
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+draw();connect();
+</script>
+</body>
+</html>
